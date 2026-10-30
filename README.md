@@ -1,120 +1,58 @@
-# UNLOCK Lab ✦
+# UNLOCK Lab Platform — real-user beta (separate from the demo)
 
-**Access what moves you forward.** A visually expressive, end-to-end campus resource-sharing demo with owner approvals, transparent allocation, condition tracking, and an auditable lifecycle.
+**This is a production-oriented, multi-institution implementation, not a replacement for the fictional hackathon demo.** The platform is not yet live: it needs a **new, dedicated Supabase project**. Never put real people or equipment details into the legacy demo; its user-switching interface does not authenticate users.
 
-> **Important hackathon compliance notice:** The event rules say submitted development must happen **during the official 48-hour build window**. This source package was created on request on **30 October 2026**. Do **not** falsely claim it was written during the event if that date is outside the official window. Verify the organiser's start time; use this as a disclosed preparation/reference artifact or rebuild the submitted implementation within the authorised period. Disclose any reused code, AI assistance, and pre-existing components.
+## What is implemented
 
-## Start in 2 commands
+- Email/password registration, email verification, sign-in, sign-out, recovery initiation and recovery-token password change using Supabase Auth; HttpOnly, SameSite session cookies.
+- Public discovery catalogue for approved institutions; individual verified accounts.
+- Owner applications for institutions; independent human-reviewed approval by a platform administrator.
+- Owners list resources with locations, local time zone, hours, safety conditions and required certifications.
+- Owner-reviewed Skill Passport certificates, qualification checks, transparent fair-use cap (2 open requests and 6h per resource / 7 days).
+- Transactional bookings, manager/owner explanations, fair-queue exceptions with documented overrides, **PostgreSQL exclusion constraint preventing concurrent overlapping confirmed reservations**.
+- Owner-rotatable handover PINs; booking check-in; initial condition; return; final condition; confirmation.
+- Private image evidence limited to booking participants, max 3MB JPEG/PNG/WebP; human-reviewed incident records and no automatic fines.
+- Database-level row security; read-only client tables; approved RPC workflows; append-only activity history; in-app notifications.
+- Animated, responsive UI with a reduced-motion media query; no exposed service role credentials.
 
-Requires Node.js 20 or later. **No npm installation, API keys or database setup needed.**
+## Project layout
 
-```bash
-cd unlock-lab
-npm start
-```
+- `server.js`: lightweight zero-dependency Node.js HTTP server. Proxies Supabase Auth/PostgREST/storage using each user's JWT (not an admin key).
+- `sql/001_platform.sql`: **new-project-only** schema, security policies, database transaction functions and storage bucket policies.
+- `public/`: interactive web experience.
+- `validate.js` and `tests/`: input validation, fail-closed and security regression tests.
 
-Open **http://localhost:3000**. Change the port with `PORT=4000 npm start` on macOS/Linux, or `set PORT=4000 && npm start` in Windows Command Prompt.
+## Required setup — dedicated, isolated infrastructure
 
-## Judge walkthrough — approximately 4–6 minutes
+1. Create a **new Supabase project for UNLOCK Lab**, not an existing unrelated project. Apply `sql/001_platform.sql` in the SQL editor and inspect advisors. (No SQL has been applied to the user's existing Supabase project.)
+2. In Supabase Auth, **enable email confirmation**, configure SMTP for reliable production mail, set Site URL to your production domain and allow redirect URL `https://YOUR-DOMAIN/`.
+3. Sign up with an operator account and confirm email. Then run the documented final administrative `UPDATE` in the migration, substituting the verified operator email; this is a deliberate operator-only manual bootstrap. Verify institution ownership with external documentation before approvals.
+4. Obtain the project's **publishable key**, never the service role or secret key, and its project URL.
+5. On Render, create a **separate** Node web service from the `production-platform` branch, set repository root as its root directory and `npm start`, with environment variables `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `NODE_ENV=production`, `COOKIE_SECURE=true`, and `PUBLIC_URL=https://YOUR-SERVICE.onrender.com`. This branch contains the platform at its repository root, so Render can deploy it directly. Do not change the current demo service on `main`.
+6. Verify these journeys with **two real test accounts** and an operator: register → verify email → apply for institution → approve → list equipment → request training → certify → request booking → approve → check in → attach condition photo → return → owner confirmation → inspect event record.
+7. Configure domain, uptime alerts, database backups, abuse monitoring, e-mail notifications, privacy documents, incident escalation and regular restore drills before broad onboarding.
 
-1. App starts as **Aarav Mehta** (student). Open **Explore resources** → **Prusa MK4 3D Printer** → **Request this resource**. Pick tomorrow, 10:00–12:00, and enter your use case.
-2. Use the top-right profile switcher → **Mira Kapoor** (owner). Open **Owner command**. The new request appears in **FairQueue** with an explainable priority score. Click **Review** → **Approve**.
-3. Switch back to **Aarav** → **My bookings**. Click **Check in**, enter the handover code **MK4-2048**, and record the starting condition, optionally uploading a photo.
-4. Click **Submit return**, record final condition, optional photo and notes. For the damage demo choose **Damaged**.
-5. Switch back to **Mira** → **Owner command** → **Confirm return**. If damage was recorded, an incident appears for separate human resolution.
-6. Open **Audit activity** or the booking detail to inspect the history, decision reasons and before/after details.
-7. To demonstrate competing requests, have **Diya Nair** reserve the same time and equipment while another booking is approved. Her request goes to **waitlisted**. Cancel the approved booking to promote the waiting request to **pending owner review**, never bypassing staff approval.
-8. Switch to **Dr. Kiran Shah** (manager) → **Owner command** → **Reset demo data** to restore the fictional workspace for the next judge.
+Run locally after configuring `.env` values in your environment (do not commit `.env`):
 
-### Demo accounts (no passwords, explicitly for judging)
-
-| Account | Role | Training |
-|---|---|---|
-| Aarav Mehta | Student | 3D print, camera, workspace |
-| Diya Nair | Student | 3D print, workspace |
-| Ishaan Rao | Student | Workspace only |
-| Mira Kapoor | Owner | Lab coordinator; controls listed resources |
-| Dr. Kiran Shah | Manager | Institution-wide reviews and demo reset |
-
-Use the top-right **profile menu** to switch accounts. **Demo login is intentionally open and is not secure authentication.** All names are fictional.
-
-## What works
-
-- **Skill Passport review lifecycle:** students request training badges and authorised managers explicitly approve or reject with documented evidence and reasons.
-- **Extension review:** approved borrowers request extra time; the owner records a human decision while scheduling conflicts and fair-use caps remain enforced.
-- **Overdue alerts:** idempotent overdue check creates owner/student notifications and an auditable event without assigning automatic penalties. Campus time offset is configurable.
-- **API hardening:** same-origin check (when Origin supplied), custom write-request header, JSON-only writes, security headers, SameSite cookies, atomic local data writes, and narrower handover code visibility; still a fictional open-role demo, **not secure authentication**.
-
-- Resource catalogue, category filters, search, description, location, rules and training requirements
-- Skill Passport eligibility gates enforced by server-side business rules
-- Requests, owner decisions and review notes, with conflict detection
-- FairQueue explanation based on previous 30-day resource usage and overall usage
-- User fair-use limits: two outstanding requests per resource and six booked hours per rolling week
-- Waitlist promotion to **pending review** after an approved booking is cancelled
-- Code-validated check-in, optional before photo, condition report and custody record
-- Check-out with optional after photo; owner confirms final return
-- Automatic incident record on damage, manual incident filing and human resolutions
-- In-app notifications and timestamped activity history
-- Demo role switcher and API role checks, with privacy scoping of booking records
-- Context-aware LabMate assistance: offline rules-based answers by default, optional OpenAI Responses API support
-- Responsive interface, perspective effects, 3D CSS object/camera-like illustrations, tilt, orbit and motion; reduced-motion accessibility
-
-## Project structure
-
-```
-unlock-lab/
-├── server.js              # HTTP API, sessions, optional AI connection, file serving
-├── logic.js               # Eligibility, scheduling, fairness and lifecycle rules
-├── public/
-│   ├── index.html         # Application shell
-│   ├── styles.css         # UI system, responsive design, CSS 3D motion
-│   ├── app.js             # Navigation, workflow screens and interactive forms
-│   └── favicon.svg
-├── data/                  # Auto-generated runtime JSON database (gitignored)
-├── tests/
-│   ├── journey.test.js    # Core lifecycle, fairness and access checks
-│   └── advanced.test.js   # Training, extensions, overdue checks
-├── docs/
-│   ├── PROJECT_DOCUMENT.md
-│   └── DEPLOYMENT.md
-├── .env.example
-└── package.json
-```
-
-## Test
-
-```bash
+```sh
+node --env-file=.env server.js
 npm test
 ```
 
-The tests exercise the lifecycle, eligibility, priority overrides, waitlist recovery, permissions, damage resolution, resource creation, schedule limits, Skill Passport review, owner-approved time extensions and overdue notifications. For UI testing, follow the judge walkthrough above.
+## Explicit limitations before broad real-world launch
 
-## Optional: connect LabMate to a real language model
+- The SQL schema has **not** been applied to a real dedicated project, so database-level integration, full browser journeys, email delivery and storage rules remain **unverified**.
+- One owner per institution and a single global platform admin role. Delegated department managers need to be added.
+- In-app notifications exist; outbound email reminders, overdue cron monitoring and SMS are not yet enabled.
+- Public catalog requires signup for booking; this is intentional.
+- Resource availability uses owner-defined local operating hours. The booking form currently accepts the *visitor's local time*, so international reservations require extra timezone-aware scheduling UX and DST testing.
+- Handovers use owner-provided PINs, not physical door or equipment control. Dangerous equipment must be supervised as required.
+- No escrow, deposit processing, insurance, identity document collection, deletion workflow, or multi-factor authentication enforcement yet.
+- Password recovery requires properly configured Auth email templates and redirect links.
+- A public site needs moderation, privacy-policy and terms approval, consent, lawful-basis assessment, India DPDP Act obligations where applicable, security review, penetration testing, rate limits at CDN/WAF, and data retention procedures.
+- In-memory per-process rate-limiting is a small defence only; it is not distributed DDoS or credential-stuffing protection.
+- No claims of production readiness or a passing real-user integration test should be made before the steps above are completed.
 
-The offline assistant works immediately, but is **not** a language model. To enable an optional model-backed assistant, set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` as **server-side environment variables**. Example:
+## Hackathon compliance
 
-```bash
-OPENAI_API_KEY=your_key_here OPENAI_MODEL=gpt-4.1-mini npm start
-```
-
-**Never** commit a real API key to GitHub or expose it in front-end JavaScript. The server sends only the user's question, basic demo role/training flags and a simplified resource catalogue to the model. No uploaded condition photos are sent. The model can advise and explain, **but cannot approve, reject, verify or alter bookings**. All access decisions use deterministic server logic and human review. Without a key or if the provider is unavailable, a clear offline guide remains available.
-
-## Security and deployment limitations
-
-This is a **hackathon judge-demo prototype**, not an institution-ready access-control system. Judge accounts are deliberately passwordless and a user may freely switch identities. JSON storage is an atomically written local single-instance data store, not a production database. The audit log is recorded but not immutable or cryptographically signed. The handover code is visible to demo users and does not physically scan a QR code. Notifications are in-app, not email or SMS. Photos are stored inline in local JSON. Time-slot comparisons use the supplied date and 24-hour clock and lack full timezone/location scheduling. No real qualification documents are verified. No payment, deposits, staff calendar integration or actual facility unlock is performed.
-
-**Before any real adoption:** implement approved institutional SSO/OAuth, server-side role provisioning, immutable or access-controlled audit logs, PostgreSQL transactions/constraints, secure object storage, signed time-limited QR codes, upload malware validation, actual privacy notices/retention policies, organisation-level tenancy, anti-spam controls, notification delivery, backups and accessibility evaluation. Use a durable disk/database on hosting; ephemeral containers reset demo changes.
-
-## Credits and disclosure
-
-- **Source:** Original prototype created with assistance from ChatGPT (AI-assisted design, JavaScript/CSS, server rules, documentation and tests).
-- **Libraries:** No runtime npm libraries or external templates. Standard Node.js APIs. Optional Google Fonts (DM Sans, Space Grotesk) are loaded through a public stylesheet; system fonts remain usable offline.
-- **AI integration:** Optional server-side OpenAI Responses API when a separately supplied secret key is configured. Otherwise LabMate uses deterministic answer rules and is disclosed as an offline guide.
-- **Assets:** Custom CSS illustrations and inline SVG icons, no downloaded stock photos, no proprietary assets.
-- **Data:** 100% fictional demo accounts, resources, transactions and conditions.
-
-See `docs/PROJECT_DOCUMENT.md`, `docs/JUDGE_GUIDE.md`, `docs/SECURITY_AND_PRIVACY.md`, `docs/PRODUCTION_ARCHITECTURE.md`, `docs/TEAM_AND_DISCLOSURE.md`, and `docs/SUBMISSION_CHECKLIST.md` for the full judging package. GitHub Actions and Docker Compose files are included.
-
-## Railway signup blocked? Publish to GitHub and deploy on Render
-
-New Railway sign-ups were paused as of 30 October 2026 during incident recovery. The repository owner can use the included Windows helper `PUBLISH-TO-GITHUB-WINDOWS.bat` to push the source to the verified GitHub repository `harikrishnanmuthukrishnan-alt/unlock-lab`, then follow `docs/RENDER_DEPLOY.md` to deploy on Render. `render.yaml` provides an optional one-service Render Blueprint. The free hosting tier is **demo-only** and its ephemeral storage can discard booking records.
+This separate implementation and earlier demo code were generated with AI assistance on 30 October 2026. If the official 48-hour window has not started, do not submit this code as if it were written inside that window. Follow event instructions on pre-existing code, templates, AI disclosures and participant contribution records.

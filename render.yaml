@@ -1,17 +1,18 @@
-# Demo-only deployment. The free plan has ephemeral filesystem storage.
-# Do not use with real identities, records, credentials or equipment access.
+# Production requires independent Supabase project and secret-free publishable key.
 services:
   - type: web
-    name: unlock-lab-demo
+    name: unlock-lab-platform
     runtime: node
     plan: free
     buildCommand: npm install --omit=dev
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:
-      - key: NODE_VERSION
-        value: 22.15.0
       - key: NODE_ENV
         value: production
-      - key: CAMPUS_TZ_OFFSET
-        value: +05:30
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
