@@ -1,0 +1,39 @@
+UNLOCK LAB — RUN LOCALLY
+========================
+
+Windows (recommended)
+1. Extract UNLOCK-Lab-Hackathon-Complete.zip.
+2. Open the extracted unlock-lab folder.
+3. Double-click START-UNLOCK-LAB-WINDOWS.bat.
+4. A server terminal opens and your browser should open http://localhost:3000.
+5. Keep the server terminal open while testing.
+
+Requirements: Node.js 20+ (https://nodejs.org/). No database, API key or npm install needed.
+
+Alternative in Windows Terminal / PowerShell
+  cd PATH\TO\unlock-lab
+  npm start
+Then open http://localhost:3000
+
+macOS/Linux Terminal
+  cd /path/to/unlock-lab
+  npm start
+Then open http://localhost:3000
+
+To run automated tests
+  npm test
+
+Demo login (fictional accounts)
+Switch between Aarav Mehta (student), Mira Kapoor (owner), and Dr. Kiran Shah
+(manager) using the top-right account switcher.
+
+Safety note: This demo has passwordless account switching and local JSON storage.
+It must not be used to control real institutional equipment or store real users'
+personal information. Read README.md and docs/JUDGE_GUIDE.md for details.
+
+Troubleshooting
+- 'node is not recognized': Install Node.js and reopen the terminal.
+- 'EADDRINUSE' or port 3000 is busy: Close the other server, or run
+  $env:PORT=4000; npm start  (PowerShell) then open http://localhost:4000.
+- If Windows blocks the batch file, open Terminal in the project folder
+  and use npm start instead. Don't bypass Windows security warnings blindly.

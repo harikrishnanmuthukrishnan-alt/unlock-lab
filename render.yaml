@@ -1,0 +1,17 @@
+# Demo-only deployment. The free plan has ephemeral filesystem storage.
+# Do not use with real identities, records, credentials or equipment access.
+services:
+  - type: web
+    name: unlock-lab-demo
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22.15.0
+      - key: NODE_ENV
+        value: production
+      - key: CAMPUS_TZ_OFFSET
+        value: +05:30

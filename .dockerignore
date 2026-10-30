@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+.env
+*.log
+*.pid
+data/db.json
+preview-*.png
+tests
+sql
