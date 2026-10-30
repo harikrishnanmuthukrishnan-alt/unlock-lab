@@ -7,11 +7,14 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {isEmail,checkPassword,parseSlot,validateAction,securityHeaders} from './validate.js';
+import {askNvidia,aiConfigured,aiRateLimit,validateQuestion} from './ai.js';
 const basedir=path.dirname(fileURLToPath(import.meta.url));
 const root=path.join(basedir,'public');
 const url=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
 const key=process.env.SUPABASE_PUBLISHABLE_KEY||'';
 const configured=!!(url.startsWith('https://') && key.length>12);
+const publicUrl=process.env.PUBLIC_URL||`http://localhost:${process.env.PORT||3000}`;
+const googleEnabled=process.env.GOOGLE_AUTH_ENABLED==='true';
 const authAttempts=new Map();
 function authRate(req){const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'unknown').split(',')[0].trim();const now=Date.now();const hits=(authAttempts.get(ip)||[]).filter(t=>now-t<900000);hits.push(now);authAttempts.set(ip,hits);if(authAttempts.size>5000){for(const [k,a] of authAttempts)if(a.at(-1)<now-900000)authAttempts.delete(k);}return hits.length<=20;}
 const port=Number(process.env.PORT||3000);
@@ -29,6 +32,11 @@ function setSession(res,session){
  `ul_refresh=${encodeURIComponent(session.refresh_token)}; Max-Age=${30*86400}; ${opts}`]);
 }
 function clearSession(res){res.setHeader('Set-Cookie',['ul_access=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax','ul_refresh=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax']);}
+function authTempCookie(name,value,age=600){return `${name}=${value}; Max-Age=${age}; HttpOnly; SameSite=Lax; Path=/auth/google; ${secure?'Secure; ':''}`;}
+function clearAuthTemp(res){res.setHeader('Set-Cookie',[authTempCookie('ul_oauth_state','',0),authTempCookie('ul_oauth_verifier','',0)]);}
+function redirect(res,where,headers={}){res.writeHead(303,{'Location':where,'Cache-Control':'no-store',...securityHeaders,...headers});res.end();}
+function oauthCallbackUrl(state){const u=new URL('/auth/google/callback',publicUrl);u.searchParams.set('state',state);return u.toString();}
+function safeOAuthCookieEqual(a,b){if(typeof a!=='string'||typeof b!=='string'||a.length!==b.length||a.length<20)return false;return crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));}
 async function body(req,max=16000){let size=0;const chunks=[];for await (const b of req){size+=b.length;if(size>max)throw Object.assign(new Error('Request too large'),{status:413});chunks.push(b);}try{return JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}')}catch{throw Object.assign(new Error('Invalid JSON'),{status:400})}}
 async function upstream(route,method='GET',token='',payload,extraHeaders={}){
  const headers={'apikey':key,'Accept':'application/json',...(token?{'Authorization':`Bearer ${token}`}:{}),...extraHeaders};
@@ -60,8 +68,27 @@ const rpcActions={
  createOrganization:'create_organization',approveOrganization:'approve_organization',createResource:'create_resource',requestTraining:'request_training',reviewTraining:'review_training',createBooking:'create_booking',decideBooking:'decide_booking',cancelBooking:'cancel_booking',checkin:'checkin_booking',checkout:'checkout_booking',confirmReturn:'confirm_return',reportIncident:'report_incident',resolveIncident:'resolve_incident',rotatePin:'rotate_resource_pin',attachPhoto:'attach_booking_photo'
 };
 async function handler(req,res){
- const pathname=new URL(req.url,'http://localhost').pathname;
+ const incoming=new URL(req.url,'http://localhost');
+ const pathname=incoming.pathname;
  if(pathname==='/healthz')return reply(res,200,{ok:true,configured,mode:'production',database:'Supabase'});
+ if(pathname==='/api/config'&&req.method==='GET')return reply(res,200,{googleEnabled:configured&&googleEnabled,aiEnabled:configured&&aiConfigured()});
+ if(pathname==='/auth/google/start'&&req.method==='GET'){
+  if(!configured||!googleEnabled)return redirect(res,'/?auth_error=google_not_ready');
+  const state=crypto.randomBytes(24).toString('base64url');const verifier=crypto.randomBytes(48).toString('base64url');
+  const challenge=crypto.createHash('sha256').update(verifier).digest('base64url');
+  const authUrl=new URL(url+'/auth/v1/authorize');authUrl.searchParams.set('provider','google');
+  authUrl.searchParams.set('redirect_to',oauthCallbackUrl(state));authUrl.searchParams.set('code_challenge',challenge);authUrl.searchParams.set('code_challenge_method','s256');
+  res.setHeader('Set-Cookie',[authTempCookie('ul_oauth_state',state),authTempCookie('ul_oauth_verifier',verifier)]);return redirect(res,authUrl.toString());
+ }
+ if(pathname==='/auth/google/callback'&&req.method==='GET'){
+  const cookies=cookieValues(req);const state=incoming.searchParams.get('state'),code=incoming.searchParams.get('code');
+  if(!googleEnabled||!safeOAuthCookieEqual(state,cookies.ul_oauth_state)||!cookies.ul_oauth_verifier||!code||code.length>2048){clearAuthTemp(res);return redirect(res,'/?auth_error=google');}
+  try{const session=await upstream('/auth/v1/token?grant_type=pkce','POST','',{auth_code:code,code_verifier:cookies.ul_oauth_verifier});
+   if(!session.access_token||!session.refresh_token)throw Error('No session');
+   const user=await upstream('/auth/v1/user','GET',session.access_token);if(!user?.email_confirmed_at)throw Error('Email not confirmed');
+   setSession(res,session);const sessionCookies=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...sessionCookies,authTempCookie('ul_oauth_state','',0),authTempCookie('ul_oauth_verifier','',0)]);return redirect(res,'/?google=ok');
+  }catch{clearAuthTemp(res);return redirect(res,'/?auth_error=google');}
+ }
  if(pathname.startsWith('/api/')){
   if(!configured)return reply(res,503,{error:'Production database has not been configured yet. This is not the public demo.'});
   if(req.method==='POST' && !preventAbuse(req,res))return;
@@ -85,6 +112,15 @@ async function handler(req,res){
    }
    const identity=await identify(req,res);assertLogin(identity);
    if(pathname==='/api/bootstrap'&&req.method==='GET')return reply(res,200,await bootstrap(identity));
+   if(pathname==='/api/ai/chat'&&req.method==='POST'){
+    if(!aiConfigured())return reply(res,503,{error:'LabMate AI will be available after the NVIDIA API key is configured.'});
+    const input=await body(req,14000);if(!validateQuestion(input.question))return reply(res,400,{error:'Ask a question between 2 and 1800 characters'});
+    if(!aiRateLimit(identity.user.id))return reply(res,429,{error:'You have reached the chat limit. Please try later.'});
+    const [resources,organizations]=await Promise.all([
+     upstream('/rest/v1/resources?select=id,name,category,organization_id,location,conditions,requirements&status=eq.active&order=created_at.desc&limit=25','GET',identity.token),
+     upstream('/rest/v1/organizations?select=id,name&status=eq.active&limit=60','GET',identity.token)]);
+    return reply(res,200,await askNvidia({question:input.question,history:input.history,resources,organizations}));
+   }
    if(pathname==='/api/action'&&req.method==='POST'){
     const input=await body(req);const action=validateAction(input);if(!rpcActions[action])return reply(res,400,{error:'Unknown action'});
     if(action==='createBooking'){const times=parseSlot(input.start,input.end);if(!times.ok)return reply(res,400,{error:times.error});}

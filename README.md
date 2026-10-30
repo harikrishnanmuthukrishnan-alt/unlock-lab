@@ -56,3 +56,9 @@ npm test
 ## Hackathon compliance
 
 This separate implementation and earlier demo code were generated with AI assistance on 30 October 2026. If the official 48-hour window has not started, do not submit this code as if it were written inside that window. Follow event instructions on pre-existing code, templates, AI disclosures and participant contribution records.
+
+## Google OAuth and NVIDIA LabMate (October 2026 upgrade)
+
+The website now includes OAuth PKCE routes, a Google-login button which becomes visible only after provider activation, and a secure NVIDIA-powered LabMate chat endpoint with resource grounding, input/history limits, per-user rate limiting and human oversight. No secret is committed.
+
+**Setup is required:** see [`GOOGLE_NVIDIA_SETUP.md`](./GOOGLE_NVIDIA_SETUP.md). Set `GOOGLE_AUTH_ENABLED=true` on Render only after completing the Google Cloud + Supabase provider steps. Enter the user's NVIDIA API key directly into **Render environment settings**, never in chat or source code. Both integrations remain inactive until those credentials are configured. Automated tests use mocked AI responses and OAuth initiation/forgery checks, not real Google or NVIDIA accounts.
